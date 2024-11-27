@@ -12,8 +12,11 @@ public class Game {
   private List<Card> currentTrick = new ArrayList<>();
   private Player trickLeader;
   private Suit trumpSuit = Suit.ROCKETS;
+  private Level currentLevel;
+  private List<Level> allLevels;
 
-  public Game() {
+  public Game(List<Level> allLevels) {
+    this.allLevels = allLevels;
     this.players = new ArrayList<>();
     deck = new Deck();
     deck.shuffle();
@@ -27,10 +30,20 @@ public class Game {
     }
   }
 
-  public void startGame(int difficulty) {
+  public void startGame(int levelNumber) {
+
     if (players.isEmpty()) {
       throw new IllegalStateException("Cannot start game with no players.");
     }
+    levelNumber = (levelNumber != 0) ? levelNumber : 1;
+    if (currentLevel == null) {
+      throw new IllegalStateException("Level not found.");
+    }
+    if (currentLevel.getDrawnTasks().isEmpty()) {
+      throw new IllegalStateException("No tasks found for this level.");
+    }
+    currentLevel = allLevels.get(levelNumber);
+    currentLevel.applyConditions(this);
     deck.shuffle();
     dealCards();
     assignTasks();
@@ -40,6 +53,12 @@ public class Game {
     for (int i = 0; i < 9; i++) { // Example deal 9 cards each
       for (Player player : players) {
         player.addCard(deck.deal());
+      }
+    }
+    for (Player player : players) {
+      if (player.getHand().contains(new Card(Suit.ROCKETS, 4))) {
+        trickLeader = player;
+        break;
       }
     }
   }
@@ -160,5 +179,38 @@ public class Game {
       }
     }
     return false;
+  }
+
+  public void applyConditions(int timeLimit) {
+    currentLevel.applyConditions(this);
+  }
+
+  public void applyCurrentsRule() {
+    System.out.println("Applying Currents rule...");
+    // ... your game logic for Currents ...
+  }
+
+  public void applyRaptureRule() {
+    System.out.println("Applying Rapture of the Deep rule...");
+    // ... your game logic for Rapture ...
+  }
+
+  public void assignAllTasksToCaptain() {
+    System.out.println("Assigning all tasks to the Captain...");
+    // ... Assign tasks logic ...
+  }
+
+  public void setTimeLimit(int timeLimit) {
+    System.out.println(
+        "Setting time limit to "
+            + timeLimit
+            + " seconds for level "
+            + currentLevel.getLevelNumber());
+
+    if (timeLimit == 0) {
+      System.out.println("No time limit for this level");
+    }
+    // ... your time limit logic ...
+
   }
 }
