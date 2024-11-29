@@ -5,212 +5,153 @@ import java.util.List;
 import net.dodo.crew.model.enums.Suit;
 
 public class Game {
-  private static final int MAX_NUM_OF_PLAYERS = 5;
-  private static final int MIN_NUM_OF_PLAYERS = 3;
-  private Deck deck;
   private List<Player> players;
-  private List<Card> currentTrick = new ArrayList<>();
-  private Player trickLeader;
-  private Suit trumpSuit = Suit.ROCKETS;
-  private Level currentLevel;
-  private List<Level> allLevels;
+  private Deck deck;
+  private int currentPlayerIndex;
+  private List<Card> currentTrick;
+  private Suit currentTrickSuit;
+  private Mission currentMission;
 
-  public Game(List<Level> allLevels) {
-    this.allLevels = allLevels;
+  public Game() {
     this.players = new ArrayList<>();
-    deck = new Deck();
-    deck.shuffle();
-    dealCards();
-    assignTasks();
+    this.deck = new Deck();
+    this.currentTrick = new ArrayList<>();
+  }
+
+  public void setCurrentMission(Mission mission) {
+    this.currentMission = mission;
   }
 
   public void addPlayer(Player player) {
-    if (players.size() < MAX_NUM_OF_PLAYERS) {
-      players.add(player);
+    if (players.size() >= 5) {
+      throw new IllegalStateException("Maximum 5 players allowed");
     }
+    players.add(player);
   }
 
-  public void startGame(int levelNumber) {
+  public void startGame() {
+    if (players.size() < 3) {
+      throw new IllegalStateException("Minimum 3 players required");
+    }
+    if (players.size() > 5) {
+      throw new IllegalStateException("Maximum 5 players allowed");
+    }
+    if (currentMission == null) {
+      setCurrentMission(MissionFactory.createMission(1, players.size()));
+    }
 
-    if (players.isEmpty()) {
-      throw new IllegalStateException("Cannot start game with no players.");
-    }
-    levelNumber = (levelNumber != 0) ? levelNumber : 1;
-    if (currentLevel == null) {
-      throw new IllegalStateException("Level not found.");
-    }
-    if (currentLevel.getDrawnTasks().isEmpty()) {
-      throw new IllegalStateException("No tasks found for this level.");
-    }
-    currentLevel = allLevels.get(levelNumber);
-    currentLevel.applyConditions(this);
     deck.shuffle();
-    dealCards();
-    assignTasks();
-  }
 
-  private void dealCards() {
-    for (int i = 0; i < 9; i++) { // Example deal 9 cards each
-      for (Player player : players) {
-        player.addCard(deck.deal());
-      }
-    }
+    // Calculate cards per player - all cards must be distributed
+    int totalCards = 40; // 4 suits × 9 cards + 4 rockets
+    int cardsPerPlayer = totalCards / players.size();
+    int remainingCards = totalCards % players.size();
+
+
+    // Distribute cards
     for (Player player : players) {
-      if (player.getHand().contains(new Card(Suit.ROCKETS, 4))) {
-        trickLeader = player;
-        break;
+      int playerCards = cardsPerPlayer;
+      if (remainingCards > 0) {
+        playerCards++;
+        remainingCards--;
       }
-    }
-  }
 
-  private void assignTasks() {}
-
-  public void playCard(Player player, Card card) {
-    currentTrick.add(card);
-    player.getHand().remove(card);
-
-    if (currentTrick.size() == players.size()) {
-      determineTrickWinner();
-    }
-  }
-
-  private void determineTrickWinner() {
-    Card leadCard = currentTrick.get(0);
-    Suit leadSuit = leadCard.getSuit();
-    Card winningCard = leadCard;
-    Player winner = trickLeader;
-
-    for (int i = 1; i < currentTrick.size(); i++) {
-      Card card = currentTrick.get(i);
-      Player currentPlayer = getNextPlayer(winner);
-
-      if (card.getSuit() == Suit.ROCKETS && card.getValue() == 4) {
-        winningCard = card;
-        winner = currentPlayer;
-      } else if (winningCard.getSuit() != Suit.ROCKETS || winningCard.getValue() != 4) {
-
-        if (card.getSuit() == Suit.ROCKETS) {
-          if (winningCard.getSuit() != Suit.ROCKETS || card.getValue() > winningCard.getValue()) {
-            winningCard = card;
-            winner = currentPlayer;
-          }
-        } else if (card.getSuit() == leadSuit && winningCard.getSuit() != Suit.ROCKETS) {
-          if (card.getValue() > winningCard.getValue()) {
-            winningCard = card;
-            winner = currentPlayer;
+      for (int i = 0; i < playerCards; i++) {
+        Card card = deck.drawCard();
+        if (card != null) {
+          player.addCardToHand(card);
+          // Assign commander to player with highest rocket
+          if (card.getSuit() == Suit.ROCKET && card.getValue() == 4) {
+            player.setCommander(true);
+            currentPlayerIndex = players.indexOf(player);
           }
         }
       }
     }
+  }
 
-    trickLeader = winner;
-    currentTrick.clear();
+  public Player getCurrentPlayer() {
+    return players.get(currentPlayerIndex);
+  }
 
-    for (Player p : players) {
-      checkTasks(p);
+  public void playCard(Player player, Card card) {
+    if (currentMission == null) {
+      throw new IllegalStateException("Current mission is not set");
+    }
+
+    if (player != getCurrentPlayer()) {
+      throw new IllegalStateException("Not this player's turn");
+    }
+
+    if (!currentMission.canPlayCard(player, card, currentTrick.isEmpty())) {
+      throw new IllegalStateException("Cannot play this card due to mission restrictions");
+    }
+
+    if (currentTrick.isEmpty()) {
+      currentTrickSuit = card.getSuit();
+      if (!currentMission.isFirstTrickPlayed()) {
+        currentMission.firstTrickPlayed();
+      }
+    }
+
+    currentTrick.add(card);
+
+    if (currentTrick.size() == players.size()) {
+      resolveCurrentTrick();
+    } else {
+      currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
     }
   }
 
-  private void checkTasks(Player player) {}
+  private void resolveCurrentTrick() {
+    int winningCardIndex = 0;
+    Card winningCard = currentTrick.get(0);
 
-  private Player getNextPlayer(Player currentPlayer) {
-    int index = players.indexOf(currentPlayer);
-    return players.get((index + 1) % players.size());
-  }
+    for (int i = 1; i < currentTrick.size(); i++) {
+      Card card = currentTrick.get(i);
 
-  public Deck getDeck() {
-    return deck;
-  }
+      if (card.getSuit() == Suit.ROCKET) {
+        if (winningCard.getSuit() != Suit.ROCKET ||
+            card.getValue() > winningCard.getValue()) {
+          winningCard = card;
+          winningCardIndex = i;
+        }
+      }
+      else if (card.getSuit().equals(currentTrickSuit)) {
+        if (winningCard.getSuit() != Suit.ROCKET &&
+            card.getValue() > winningCard.getValue()) {
+          winningCard = card;
+          winningCardIndex = i;
+        }
+      }
+    }
 
-  public Game setDeck(Deck deck) {
-    this.deck = deck;
-    return this;
-  }
+    // Record trick winner for mission conditions
+    Player winner = players.get((currentPlayerIndex + winningCardIndex) % players.size());
+    currentMission.recordTrickWinner(winner, winningCard);
 
-  public List<Player> getPlayers() {
-    return players;
-  }
+    // Check task completion
+    for (Task task : currentMission.getTasks()) {
+      if (!task.isCompleted()) {
+        task.checkCompletion(winningCard, winner, true);
+      }
+    }
 
-  public Game setPlayers(List<Player> players) {
-    this.players = players;
-    return this;
+    // Winner of trick starts next trick
+    currentPlayerIndex = (currentPlayerIndex + winningCardIndex) % players.size();
+    currentTrick.clear();
+    currentTrickSuit = null;
   }
 
   public List<Card> getCurrentTrick() {
-    return currentTrick;
+    return new ArrayList<>(currentTrick);
   }
 
-  public Game setCurrentTrick(List<Card> currentTrick) {
-    this.currentTrick = currentTrick;
-    return this;
+  public List<Player> getPlayers() {
+    return new ArrayList<>(players);
   }
 
-  public Player getTrickLeader() {
-    return trickLeader;
-  }
-
-  public Game setTrickLeader(Player trickLeader) {
-    this.trickLeader = trickLeader;
-    return this;
-  }
-
-  public Suit getTrumpSuit() {
-    return trumpSuit;
-  }
-
-  public Game setTrumpSuit(Suit trumpSuit) {
-    this.trumpSuit = trumpSuit;
-    return this;
-  }
-
-  public static int getMaxNumOfPlayers() {
-    return MAX_NUM_OF_PLAYERS;
-  }
-
-  public static int getMinNumOfPlayers() {
-    return MIN_NUM_OF_PLAYERS;
-  }
-
-  public boolean playerExists(String playerName) {
-    List<Player> players = getPlayers();
-    for (Player player : players) {
-      if (player.getName().equalsIgnoreCase(playerName)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  public void applyConditions(int timeLimit) {
-    currentLevel.applyConditions(this);
-  }
-
-  public void applyCurrentsRule() {
-    System.out.println("Applying Currents rule...");
-    // ... your game logic for Currents ...
-  }
-
-  public void applyRaptureRule() {
-    System.out.println("Applying Rapture of the Deep rule...");
-    // ... your game logic for Rapture ...
-  }
-
-  public void assignAllTasksToCaptain() {
-    System.out.println("Assigning all tasks to the Captain...");
-    // ... Assign tasks logic ...
-  }
-
-  public void setTimeLimit(int timeLimit) {
-    System.out.println(
-        "Setting time limit to "
-            + timeLimit
-            + " seconds for level "
-            + currentLevel.getLevelNumber());
-
-    if (timeLimit == 0) {
-      System.out.println("No time limit for this level");
-    }
-    // ... your time limit logic ...
-
+  public Mission getCurrentMission() {
+    return currentMission;
   }
 }

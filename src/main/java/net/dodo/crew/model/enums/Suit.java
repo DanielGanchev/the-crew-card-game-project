@@ -1,7 +1,7 @@
 package net.dodo.crew.model.enums;
 
 public enum Suit {
-  ROCKETS,
+  ROCKET,
   BLUE,
   GREEN,
   YELLOW,

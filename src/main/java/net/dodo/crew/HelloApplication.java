@@ -1,104 +1,243 @@
 package net.dodo.crew;
 
-import java.io.IOException;
 import javafx.application.Application;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextField;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
 import javafx.stage.Stage;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+
+
+import java.util.*;
+import net.dodo.crew.model.Card;
 import net.dodo.crew.model.Game;
 import net.dodo.crew.model.Player;
 
 public class HelloApplication extends Application {
-
-  private Game game = new Game();
+  private Game game;
+  private BorderPane root;
+  private HBox playerHand;
+  private VBox centerArea;
+  private Label statusLabel;
+  private HBox currentTrick;
+  private Stage primaryStage;
+  private List<String> playerNames = new ArrayList<>();
 
   @Override
-  public void start(Stage stage) throws IOException {
-    VBox root = new VBox(10);
+  public void start(Stage primaryStage) {
+    this.primaryStage = primaryStage;
+    showPlayerSetup();
+  }
+
+  private void showPlayerSetup() {
+    VBox setupRoot = new VBox(20);
+    setupRoot.setAlignment(Pos.CENTER);
+    setupRoot.setPadding(new Insets(20));
+    setupRoot.setStyle("-fx-background-color: #2C3E50;");
+
+    Label titleLabel = new Label("The Crew - Player Setup");
+    titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 28));
+    titleLabel.setStyle("-fx-text-fill: white;");
+
+    ComboBox<Integer> playerCountBox = new ComboBox<>();
+    playerCountBox.getItems().addAll(3, 4, 5);
+    playerCountBox.setValue(3);
+    playerCountBox.setStyle("""
+            -fx-background-color: white;
+            -fx-font-size: 16px;
+        """);
+
+    VBox playerInputs = new VBox(10);
+    playerInputs.setAlignment(Pos.CENTER);
+
+    Button startButton = new Button("Start Game");
+    startButton.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+    startButton.setStyle("""
+            -fx-background-color: #27ae60;
+            -fx-text-fill: white;
+            -fx-padding: 10 20;
+            -fx-border-radius: 5;
+            -fx-background-radius: 5;
+        """);
+
+    Label errorLabel = new Label("");
+    errorLabel.setStyle("-fx-text-fill: #e74c3c;");
+
+
+    playerCountBox.setOnAction(e -> {
+      playerInputs.getChildren().clear();
+      for (int i = 0; i < playerCountBox.getValue(); i++) {
+        TextField nameField = new TextField();
+        nameField.setPromptText("Player " + (i + 1) + " name");
+        nameField.setStyle("""
+                    -fx-background-color: white;
+                    -fx-font-size: 16px;
+                    -fx-padding: 8 15;
+                """);
+        playerInputs.getChildren().add(nameField);
+      }
+    });
+    playerCountBox.fireEvent(new javafx.event.ActionEvent());
+
+    startButton.setOnAction(e -> {
+      playerNames.clear();
+      Set<String> uniqueNames = new HashSet<>();
+      boolean hasEmptyName = false;
+
+      for (javafx.scene.Node node : playerInputs.getChildren()) {
+        if (node instanceof TextField) {
+          String name = ((TextField) node).getText().trim();
+          if (name.isEmpty()) {
+            hasEmptyName = true;
+            break;
+          }
+          playerNames.add(name);
+          uniqueNames.add(name);
+        }
+      }
+
+      if (hasEmptyName) {
+        errorLabel.setText("All players must have names!");
+        return;
+      }
+
+      if (uniqueNames.size() != playerNames.size()) {
+        errorLabel.setText("All player names must be unique!");
+        return;
+      }
+
+      initializeGame();
+      createUI();
+      Scene gameScene = new Scene(root, 1024, 768);
+      primaryStage.setScene(gameScene);
+    });
+
+    setupRoot.getChildren().addAll(
+        titleLabel,
+        new Label("Select number of players:") {{
+          setStyle("-fx-text-fill: white;");
+        }},
+        playerCountBox,
+        playerInputs,
+        startButton,
+        errorLabel
+    );
+
+    Scene setupScene = new Scene(setupRoot, 600, 400);
+    primaryStage.setTitle("The Crew Card Game");
+    primaryStage.setScene(setupScene);
+    primaryStage.show();
+  }
+
+  private void initializeGame() {
+    game = new Game();
+    for (String playerName : playerNames) {
+      game.addPlayer(new Player(playerName));
+    }
+    game.startGame();
+  }
+
+  private void createUI() {
+    root = new BorderPane();
     root.setPadding(new Insets(20));
-    root.setAlignment(Pos.CENTER); // Center align content
+    root.setStyle("-fx-background-color: #2C3E50;");
 
-    Label playerNameLabel = new Label("Player Name:");
-    TextField playerNameField = new TextField();
-    Button addPlayerButton = new Button("Add Player");
+    playerHand = new HBox(10);
+    playerHand.setAlignment(Pos.CENTER);
+    playerHand.setPadding(new Insets(10));
 
-    HBox addPlayerBox = new HBox(10); // Container for name field and button
-    addPlayerBox.setAlignment(Pos.CENTER);
-    addPlayerBox.getChildren().addAll(playerNameLabel, playerNameField, addPlayerButton);
+    centerArea = new VBox(20);
+    centerArea.setAlignment(Pos.CENTER);
 
-    addPlayerButton.setOnAction(
-        event -> {
-          String playerName = playerNameField.getText().trim();
-          if (game.getPlayers().size() >= Game.getMaxNumOfPlayers()) {
+    statusLabel = new Label("Game Started!");
+    statusLabel.setFont(Font.font("Arial", FontWeight.BOLD, 24));
+    statusLabel.setStyle("-fx-text-fill: white;");
 
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Player Limit");
-            alert.setHeaderText(null);
-            alert.setContentText("Maximum " + Game.getMaxNumOfPlayers() + " players allowed!");
-            alert.showAndWait();
+    currentTrick = new HBox(10);
+    currentTrick.setAlignment(Pos.CENTER);
+    currentTrick.setPadding(new Insets(20));
 
-          } else if (game.playerExists(playerName)) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Duplicate Player Name");
-            alert.setHeaderText(null);
-            alert.setContentText(
-                "Player '" + playerName + "' already exists. Please enter a different name.");
-            alert.showAndWait();
+    centerArea.getChildren().addAll(statusLabel, currentTrick);
+    root.setCenter(centerArea);
+    root.setBottom(playerHand);
 
-          } else if (!playerName.isEmpty()) {
-            game.addPlayer(new Player(playerName));
-            playerNameField.clear();
-            System.out.println(playerName + " added.");
+    updateUI();
+  }
 
-          } else {
-            System.out.println("Player name cannot be empty.");
-          }
-        });
+  private void updatePlayerHand() {
+    playerHand.getChildren().clear();
+    Player currentPlayer = game.getCurrentPlayer();
+    List<Card> hand = currentPlayer.getHand();
 
-    Button startGameButton = new Button("Start Game");
-    startGameButton.setOnAction(
-        event -> {
-          if (game.getPlayers().size() < Game.getMinNumOfPlayers()) {
+    for (int i = 0; i < hand.size(); i++) {
+      Card card = hand.get(i);
+      Button cardButton = createCardButton(card, i);
+      playerHand.getChildren().add(cardButton);
+    }
+  }
 
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Not Enough Players");
-            alert.setHeaderText(null);
-            alert.setContentText(
-                "Minimum "
-                    + Game.getMinNumOfPlayers()
-                    + " players are required to start the game.");
-            alert.showAndWait();
-          } else if (game.getPlayers().size() > Game.getMaxNumOfPlayers()) {
-            Alert alert = new Alert(Alert.AlertType.WARNING);
-            alert.setTitle("Too Many Players");
-            alert.setHeaderText(null);
-            alert.setContentText("Maximum " + Game.getMaxNumOfPlayers() + " players are allowed.");
-            alert.showAndWait();
-          } else {
-            try {
-              game.startGame(5);
-              System.out.println("Game started!");
+  private Button createCardButton(Card card, int index) {
+    Button cardButton = new Button(card.toString());
+    cardButton.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+    cardButton.setStyle("""
+            -fx-background-color: white;
+            -fx-text-fill: #2C3E50;
+            -fx-padding: 10 20;
+            -fx-border-radius: 5;
+            -fx-background-radius: 5;
+            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 5, 0, 0, 2);
+        """);
 
-            } catch (IllegalStateException e) {
-              System.err.println(e.getMessage());
-            }
-          }
-        });
+    cardButton.setOnMouseEntered(e -> cardButton.setStyle("""
+            -fx-background-color: #f8f9fa;
+            -fx-text-fill: #2C3E50;
+            -fx-padding: 10 20;
+            -fx-border-radius: 5;
+            -fx-background-radius: 5;
+            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.4), 8, 0, 0, 3);
+        """));
 
-    root.getChildren().addAll(addPlayerBox, startGameButton);
-    Scene scene = new Scene(root, 300, 200);
-    stage.setScene(scene);
-    stage.show();
+    cardButton.setOnMouseExited(e -> cardButton.setStyle("""
+            -fx-background-color: white;
+            -fx-text-fill: #2C3E50;
+            -fx-padding: 10 20;
+            -fx-border-radius: 5;
+            -fx-background-radius: 5;
+            -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.2), 5, 0, 0, 2);
+        """));
+
+    final int cardIndex = index;
+    cardButton.setOnAction(e -> playCard(cardIndex));
+    return cardButton;
+  }
+
+  private void playCard(int cardIndex) {
+    Player currentPlayer = game.getCurrentPlayer();
+    Card playedCard = currentPlayer.playCard(cardIndex);
+    if (playedCard != null) {
+      game.playCard(currentPlayer, playedCard);
+      updateUI();
+    }
+  }
+
+  private void updateUI() {
+    updatePlayerHand();
+    Player currentPlayer = game.getCurrentPlayer();
+    statusLabel.setText(currentPlayer.getName() + "'s turn");
+
+    currentTrick.getChildren().clear();
+    for (Card card : game.getCurrentTrick()) {
+      Label cardLabel = new Label(card.toString());
+      cardLabel.setFont(Font.font("Arial", FontWeight.BOLD, 20));
+      cardLabel.setStyle("-fx-text-fill: white;");
+      currentTrick.getChildren().add(cardLabel);
+    }
   }
 
   public static void main(String[] args) {
-    launch();
+    launch(args);
   }
 }
